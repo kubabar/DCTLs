@@ -1,0 +1,73 @@
+DEFINE_UI_PARAMS(xr, Red x,   DCTLUI_SLIDER_FLOAT, 0.6400, 0.0000, 1.0, 0.0001)
+DEFINE_UI_PARAMS(yr, Red y,   DCTLUI_SLIDER_FLOAT, 0.3300, 0.0001, 1.0, 0.0001)
+DEFINE_UI_PARAMS(xg, Green x, DCTLUI_SLIDER_FLOAT, 0.3000,-1.0000, 1.0, 0.0001)
+DEFINE_UI_PARAMS(yg, Green y, DCTLUI_SLIDER_FLOAT, 0.6000, 0.0001, 1.5, 0.0001)
+DEFINE_UI_PARAMS(xb, Blue x,  DCTLUI_SLIDER_FLOAT, 0.1500,-1.0000, 1.0, 0.0001)
+DEFINE_UI_PARAMS(yb, Blue y,  DCTLUI_SLIDER_FLOAT, 0.0600,-1.0000, 1.0, 0.0001)
+DEFINE_UI_PARAMS(xw, White x, DCTLUI_SLIDER_FLOAT, 0.3127, 0.0000, 1.0, 0.0001)
+DEFINE_UI_PARAMS(yw, White y, DCTLUI_SLIDER_FLOAT, 0.3290, 0.0001, 1.0, 0.0001)
+
+// This DCTL expects linear data in a non-standard gamut and converts it to the XYZ color space.
+
+
+__DEVICE__ float3 mxv(float mat[3][3], float3 v) {
+    float3 out = make_float3(mat[0][0] * v.x + mat[0][1] * v.y + mat[0][2] * v.z,
+                             mat[1][0] * v.x + mat[1][1] * v.y + mat[1][2] * v.z,
+                             mat[2][0] * v.x + mat[2][1] * v.y + mat[2][2] * v.z);
+    return out;
+}
+
+
+
+__DEVICE__ float3 transform(int p_Width, int p_Height, int p_X, int p_Y, float p_R, float p_G, float p_B) {
+    
+    
+    float Xr = xr / yr;
+    float Zr = (1 - xr - yr) / yr;
+
+    float Xg = xg / yg;
+    float Zg = (1 - xg - yg) / yg;
+
+    float Xb = xb / yb;
+    float Zb = (1 - xb - yb) / yb;
+
+    float RGB[3][3] = {
+      {Xr, Xg, Xb},
+      {1, 1, 1},
+      {Zr, Zg, Zb},
+    };
+    
+
+    float Xw = xw / yw;
+    float Zw = (1 - xw - yw) / yw;
+
+    float3 W1 = make_float3(Xw, 1, Zw);
+    
+    
+    // matrix inversion
+
+    float Det = RGB[0][0]*(RGB[2][2] - RGB[2][1]) - RGB[0][1]*(RGB[2][2] - RGB[2][0]) + RGB[0][2]*(RGB[2][1] - RGB[2][0]);
+
+    float A = (RGB[2][2] - RGB[2][1])/Det;
+    float B = (RGB[2][0] - RGB[2][2])/Det;
+    float C = (RGB[2][1] - RGB[2][0])/Det;
+    float D = (RGB[0][2]*RGB[2][1] - RGB[0][1]*RGB[2][2])/Det;
+    float E = (RGB[0][0]*RGB[2][2] - RGB[0][2]*RGB[2][0])/Det;
+    float F = (RGB[0][1]*RGB[2][0] - RGB[0][0]*RGB[2][1])/Det;
+    float G = (RGB[0][1] - RGB[0][2])/Det;
+    float H = (RGB[0][2] - RGB[0][0])/Det;
+    float I = (RGB[0][0] - RGB[0][1])/Det;
+
+    float invRGB[3][3] = {
+          {A, D, G},
+          {B, E, H},
+          {C, F, I}};
+   
+    float3 S = mxv(invRGB, W1);
+
+    const float rt = (S.x*RGB[0][0] * p_R) + (S.y*RGB[0][1] * p_G) + (S.z*RGB[0][2] * p_B);
+    const float gt = (S.x * p_R) + (S.y * p_G) + (S.z * p_B);
+    const float bt = (S.x*RGB[2][0] * p_R) + (S.y*RGB[2][1] * p_G) + (S.z*RGB[2][2] * p_B);
+
+    return make_float3(rt, gt, bt);
+}
